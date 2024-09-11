@@ -8,35 +8,29 @@ public unsafe class CustomRenderPipeline : RenderPipeline
     Material finalBlitMat;
     CommandBuffer cb;
     bool isRenderingEditor;
-    List<PipelineComponent> components = new List<PipelineComponent>();
-    System.Func<System.Type, PipelineComponent> getComponent;
+    BasePassComponent baseComponent;
+    // System.Func<System.Type, PipelineComponent> getComponent;
     public CustomRenderPipeline(CustomRenderPipelineAsset asset)
     {
         cb = new CommandBuffer();
-        getComponent = (type) =>
-        {
-            foreach (var i in components)
-            {
-                if (i.GetType() == type) return i;
-            }
-            return null;
-        };
+        // getComponent = (type) =>
+        // {
+        //     foreach (var i in components)
+        //     {
+        //         if (i.GetType() == type) return i;
+        //     }
+        //     return null;
+        // };
         this.asset = asset;
-        components.Add(new BasePassComponent());
-        foreach (var i in components)
-        {
-            i.Start();
-        }
+        baseComponent = new BasePassComponent();
+        baseComponent.Start();
     }
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
         cb.Dispose();
         Object.DestroyImmediate(finalBlitMat);
-        foreach (var i in components)
-        {
-            i.Dispose();
-        }
+        baseComponent.Dispose();
     }
     RenderTexture rt;
     override protected void Render(ScriptableRenderContext context, Camera[] cameras)
@@ -100,7 +94,7 @@ public unsafe class CustomRenderPipeline : RenderPipeline
                 asset = asset,
                 camera = cam,
                 isRenderingEditor = isRenderingEditor,
-                GetComponent = getComponent,
+                // GetComponent = getComponent,
                 targetTexture = rt,
                 cb = cb
             };
@@ -109,14 +103,8 @@ public unsafe class CustomRenderPipeline : RenderPipeline
             cb.ClearRenderTarget(true, false, Color.black);
             context.ExecuteCommandBuffer(cb);
             cb.Clear();
-            foreach (var i in components)
-            {
-                i.PreProcess(ref arg);
-            }
-            foreach (var i in components)
-            {
-                i.PostProcess(ref arg);
-            }
+            baseComponent.PreProcess(ref arg);
+            baseComponent.PostProcess(ref arg);
             // cb.Clear();
             // cb.SetRenderTarget(rt);
             // context.ExecuteCommandBuffer(cb);

@@ -11,11 +11,4 @@ public struct PipeComponentArg
     public Camera camera;
     public bool isRenderingEditor;
     public RenderTexture targetTexture;
-    public System.Func<Type, PipelineComponent> GetComponent;
 };
-public interface PipelineComponent : System.IDisposable
-{
-    public void Start();
-    public void PreProcess(ref PipeComponentArg arg);
-    public void PostProcess(ref PipeComponentArg arg);
-}

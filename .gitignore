@@ -330,3 +330,4 @@ scripts/options.cmake
 FidelityFX-FSR2/
 xess/
 cpp_project/compute
+Assets/Plugins

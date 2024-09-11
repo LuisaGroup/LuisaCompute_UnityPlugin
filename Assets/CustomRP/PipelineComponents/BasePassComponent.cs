@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class BasePassComponent : PipelineComponent
+public class BasePassComponent : System.IDisposable
 {
     public ScriptableCullingParameters cullParams;
     public CullingResults cullResult;
@@ -36,19 +36,6 @@ public class BasePassComponent : PipelineComponent
         ref var asset = ref arg.asset;
         context.ExecuteCommandBuffer(cb);
         cb.Clear();
-        DrawingSettings darwSettings = new DrawingSettings(new ShaderTagId("CustomPass"),
-                new SortingSettings(cam)
-                {
-                    criteria = SortingCriteria.SortingLayer | SortingCriteria.RenderQueue | SortingCriteria.QuantizedFrontToBack
-                });
-        FilteringSettings opaqueFilter = new FilteringSettings
-        {
-            layerMask = cam.cullingMask,
-            renderingLayerMask = 1,
-            renderQueueRange = new RenderQueueRange(2000, 2449)
-        };
-        context.DrawRenderers(cullResult, ref darwSettings, ref opaqueFilter);
-        context.DrawSkybox(cam);
         if (asset.useNativeRenderer)
         {
 
@@ -75,6 +62,7 @@ public class BasePassComponent : PipelineComponent
             SaberPlugin.IssuePluginEvent(cb, RenderEvents.PathTracing, ref createRTData);
         }
         context.ExecuteCommandBuffer(cb);
+        context.DrawUIOverlay(cam);
         cb.Clear();
     }
     public void Dispose()
