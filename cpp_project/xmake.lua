@@ -1,33 +1,27 @@
-set_xmakever("2.8.1")
 add_rules("mode.release", "mode.debug")
+local lc_options = {
+    cpu_backend = false,
+    cuda_backend = false,
+    dx_backend = true,
+    enable_cuda = false,
+    enable_api = false,
+    enable_clangcxx = true,
+    enable_dsl = true,
+    enable_gui = true,
+    enable_osl = false,
+    enable_ir = false,
+    enable_tests = false,
+    metal_backend = false
+}
+if is_host("windows") then
+    set_config("lc_toolchain", "llvm")
+end
+for k, v in pairs(lc_options) do
+    set_config(k, v)
+end
 
-option("lc_path")
-set_default(false)
-set_showmenu(true)
-before_check(function(option)
-	local function invalid_str(s)
-		return type(s) ~= "string" or s:len() == 0
-	end
-	if invalid_str(option:enabled()) then
-		utils.error("Must have luisa-compute's path!")
-	end
-end)
-option_end()
-
+includes("compute")
 if is_arch("x64", "x86_64", "arm64") then
-	includes("scripts/xmake_func.lua")
-	local lc_path = get_config("lc_path")
-	if lc_path then
-		includes(path.join(lc_path, "config/xmake_rules.lua"))
-	end
-	function load_lc()
-		if lc_path then
-			set_values("lc_is_public", true)
-			set_values("lc_dir", lc_path)
-			add_rules("add_lc_includedirs", "add_lc_defines")
-		end
-		add_rules("link_lc", "copy_dll")
-	end
 	if is_mode("debug") then
 		set_targetdir("bin/debug")
 	else

@@ -2,7 +2,7 @@ target("lc-unity3d")
 _config_project({
     project_kind = "shared"
 })
-load_lc()
+add_deps("lc-runtime", "lc-dsl", "lc-vstl")
 set_pcxxheader("pch.h")
 add_files("**.cpp")
 add_syslinks("DXGI")

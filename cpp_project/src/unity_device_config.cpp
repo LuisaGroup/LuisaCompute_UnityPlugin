@@ -47,14 +47,11 @@ UnityDeviceConfig::UnityDeviceConfig() noexcept {
         _adapter = nullptr;
     }
 }
-ID3D12Device *UnityDeviceConfig::GetDevice() noexcept {
-    return _device;
-}
-IDXGIAdapter1 *UnityDeviceConfig::GetAdapter() noexcept {
-    return _adapter.Get();
-}
-IDXGIFactory4 *UnityDeviceConfig::GetDXGIFactory() noexcept {
-    return _dxgi_factory.Get();
+auto UnityDeviceConfig::CreateExternalDevice() noexcept -> luisa::optional<ExternalDevice> {
+    return ExternalDevice{
+        _device,
+        _adapter.Get(),
+        _dxgi_factory.Get()};
 }
 // queue is nullable
 ID3D12CommandQueue *UnityDeviceConfig::CreateQueue(D3D12_COMMAND_LIST_TYPE type) noexcept {

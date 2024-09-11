@@ -31,9 +31,7 @@ public:
     [[nodiscard]] auto device() const noexcept { return _device; }
     UnityDeviceConfig() noexcept;
     ~UnityDeviceConfig() noexcept = default;
-    ID3D12Device *GetDevice() noexcept override;
-    IDXGIAdapter1 *GetAdapter() noexcept override;
-    IDXGIFactory4 *GetDXGIFactory() noexcept override;
+    luisa::optional<ExternalDevice> CreateExternalDevice() noexcept override;
     ID3D12CommandQueue *CreateQueue(D3D12_COMMAND_LIST_TYPE type) noexcept override;
     bool ExecuteCommandList(
         ID3D12CommandQueue *queue,
