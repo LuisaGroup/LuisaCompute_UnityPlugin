@@ -32,7 +32,7 @@ public:
     }
 };
 static EnginePathIniter enginePathIniter;
-static IUnityGraphicsD3D12v5 *_unity_graphics{nullptr};
+static IUnityGraphicsD3D12v7 *_unity_graphics{nullptr};
 UnityDeviceConfig::UnityDeviceConfig() noexcept {
     uint32_t dxgiFactoryFlags = 0;
     ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(_dxgi_factory.GetAddressOf())));
@@ -112,7 +112,7 @@ auto LCPlugin::get(int id) -> Event & {
     }
 }
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces *unity_interface) {
-    _unity_graphics = unity_interface->Get<IUnityGraphicsD3D12v5>();
+    _unity_graphics = unity_interface->Get<IUnityGraphicsD3D12v7>();
 }
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 }
