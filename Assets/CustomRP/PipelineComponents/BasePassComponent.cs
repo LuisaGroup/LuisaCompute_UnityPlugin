@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -18,6 +19,7 @@ public class BasePassComponent : System.IDisposable
         cullParams.cullingOptions |= CullingOptions.OcclusionCull;
         cullResult = arg.context.Cull(ref cullParams);
     }
+    [StructLayout(LayoutKind.Sequential)]
     struct CreateRTData
     {
         public System.IntPtr ptr;
@@ -25,7 +27,8 @@ public class BasePassComponent : System.IDisposable
         public LCPixelStorage storage;
         public Matrix4x4 invvp;
         public Vector3 camera_pos;
-        public bool resetFrame;
+        public int cameraId;
+        public uint resetFrame;
     }
     public void PostProcess(ref PipeComponentArg arg)
     {
@@ -43,27 +46,43 @@ public class BasePassComponent : System.IDisposable
             {
                 ptr = arg.targetTexture.GetNativeTexturePtr(),
                 depthPtr = arg.targetTexture.GetNativeDepthBufferPtr(),
-                storage = LCPixelStorage.HALF4,
+                storage = GetPixelStorage(arg.targetTexture.format),
                 invvp = (GL.GetGPUProjectionMatrix(cam.projectionMatrix, false) * cam.worldToCameraMatrix).inverse,
-                camera_pos = cam.transform.position
+                camera_pos = cam.transform.position,
+                cameraId = cam.GetEntityId().GetHashCode()
             };
             switch (asset.forceReset)
             {
                 case CustomRenderPipelineAsset.ResetMode.ForceReset:
-                    createRTData.resetFrame = true;
+                    createRTData.resetFrame = 1u;
                     break;
                 case CustomRenderPipelineAsset.ResetMode.ForceContinue:
-                    createRTData.resetFrame = false;
+                    createRTData.resetFrame = 0u;
                     break;
                 default:
-                    createRTData.resetFrame = CustomRenderPipelineAsset.resetFrame;
+                    createRTData.resetFrame = arg.resetFrame ? 1u : 0u;
                     break;
             }
             SaberPlugin.IssuePluginEvent(cb, RenderEvents.PathTracing, ref createRTData);
         }
         context.ExecuteCommandBuffer(cb);
-        context.DrawUIOverlay(cam);
         cb.Clear();
+    }
+    private static LCPixelStorage GetPixelStorage(RenderTextureFormat format)
+    {
+        switch (format)
+        {
+            case RenderTextureFormat.ARGB32:
+                return LCPixelStorage.BYTE4;
+            case RenderTextureFormat.RGB111110Float:
+                return LCPixelStorage.R11G11B10;
+            case RenderTextureFormat.ARGBHalf:
+                return LCPixelStorage.HALF4;
+            case RenderTextureFormat.ARGBFloat:
+                return LCPixelStorage.FLOAT4;
+            default:
+                throw new System.NotSupportedException($"Unsupported native render target format: {format}");
+        }
     }
     public void Dispose()
     {

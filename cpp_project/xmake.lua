@@ -1,17 +1,26 @@
 add_rules("mode.release", "mode.debug")
+
+option("unity_dxc_dir")
+    set_default(false)
+    set_showmenu(true)
+option_end()
+
 local lc_options = {
-    cpu_backend = false,
-    cuda_backend = false,
-    dx_backend = true,
-    enable_cuda = false,
-    enable_api = false,
-    enable_clangcxx = true,
-    enable_dsl = true,
-    enable_gui = true,
-    enable_osl = false,
-    enable_ir = false,
-    enable_tests = false,
-    metal_backend = false
+    lc_dx_backend = true,
+    lc_vk_backend = false,
+    lc_cuda_backend = false,
+    lc_metal_backend = false,
+    lc_fallback_backend = false,
+    lc_enable_tests = false,
+    lc_enable_dsl = true,
+    lc_enable_gui = false,
+    lc_enable_imgui = false,
+    lc_enable_osl = false,
+    lc_enable_clangcxx = false,
+    lc_enable_xir = false,
+    lc_enable_py = false,
+    lc_dx_cuda_interop = false,
+    lc_vk_cuda_interop = false
 }
 if is_host("windows") then
     set_config("lc_toolchain", "llvm")
