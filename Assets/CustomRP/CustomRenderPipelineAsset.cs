@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 [CreateAssetMenu(menuName = "Rendering/Custom Render Pipeline")]
-public class CustomRenderPipelineAsset : RenderPipelineAsset
+public class CustomRenderPipelineAsset : RenderPipelineAsset<CustomRenderPipeline>
 {
+    public override string renderPipelineShaderTag => "CustomRenderPipeline";
+
     public enum HDRType{
         LDR,
         HDR_LowQuality,
@@ -14,7 +16,6 @@ public class CustomRenderPipelineAsset : RenderPipelineAsset
         ForceContinue
     }
     public HDRType hdrType = HDRType.HDR_HighQuality;
-    public static bool resetFrame = false;
     public  ResetMode forceReset = ResetMode.None;
     public bool useNativeRenderer = false;
     public Shader finalBlitShader;

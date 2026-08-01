@@ -10,5 +10,6 @@ public struct PipeComponentArg
     public CommandBuffer cb;
     public Camera camera;
     public bool isRenderingEditor;
+    public bool resetFrame;
     public RenderTexture targetTexture;
 };

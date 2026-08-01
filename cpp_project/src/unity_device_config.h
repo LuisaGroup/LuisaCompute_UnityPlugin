@@ -46,7 +46,8 @@ struct CreateRTData {
     PixelStorage storage;
     float invvp[16];
     float camera_pos[3];
-    bool resetFrame;
+    int cameraId;
+    uint resetFrame;
 };
 class PathTracingComponent {
 public:
@@ -55,15 +56,19 @@ public:
         float3 cam_pos;
         uint frame;
     };
+    struct CameraState {
+        int camera_id{-1};
+        Image<uint> seed_image;
+        Image<float> color_image;
+        uint frame{0u};
+    };
     luisa::optional<BufferArena> buffer_arena;
     vector<Mesh> meshes;
     Accel accel;
     BindlessArray heap;
     Shader2D<Image<uint>> init_sampler_shader;
     Shader2D<Image<uint>, Image<float>, Image<float>, Image<float>, Arg> shader;
-    Image<uint> seed_image;
-    Image<float> color_image;
-    uint frame = 0;
+    vector<CameraState> camera_states;
     void init(Device &device, Stream &stream);
     void execute(Device &device, ImageView<float> tex, ImageView<float> depth_tex, CommandList &cmdlist, CreateRTData const &data);
 };
@@ -78,15 +83,10 @@ private:
     Device _lc_device;
     Stream _lc_stream;
     UnityDeviceConfig *_unity_config;
-    vector<Event> _events;
-    vector<int> _empty_elements;
     PathTracingComponent pt_component;
-    std::mutex _event_mtx;
 
 public:
-    size_t emplace(int event_id, span<const std::byte> data);
-    Event &get(int id);
-    void on_render_event(int index);
+    void on_render_event(int event_id, span<const std::byte> data);
     auto const &device() const { return _lc_device; }
     auto const &stream() const { return _lc_stream; }
     static LCPlugin *instance();

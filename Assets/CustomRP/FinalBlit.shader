@@ -2,52 +2,46 @@ Shader "Hidden/FinalBlit"
 {
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
+        _MainTex ("Texture", 2D) = "black" {}
     }
+
     SubShader
     {
-        // No culling or depth
-        Cull Off ZWrite Off ZTest Always
+        Cull Off
+        ZWrite Off
+        ZTest Always
 
         Pass
         {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+            HLSLPROGRAM
+            #pragma target 5.0
+            #pragma vertex Vert
+            #pragma fragment Frag
 
-            #include "UnityCG.cginc"
+            Texture2D _MainTex;
+            SamplerState sampler_MainTex;
+            float4 _SourceScaleBias;
 
-            struct appdata
+            struct Varyings
             {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD;
-            };
-
-            struct v2f
-            {
-                float4 vertex : SV_POSITION;
+                float4 positionCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
             };
 
-            v2f vert (appdata v)
+            Varyings Vert(uint vertexId : SV_VertexID)
             {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
-                #if UNITY_UV_STARTS_AT_TOP
-                    o.uv.y = 1 - o.uv.y;
-                #endif
-                return o;
+                Varyings output;
+                float2 uv = float2((vertexId << 1) & 2, vertexId & 2);
+                output.positionCS = float4(uv * 2.0 - 1.0, 0.0, 1.0);
+                output.uv = uv * _SourceScaleBias.xy + _SourceScaleBias.zw;
+                return output;
             }
 
-            sampler2D _MainTex;
-
-            float4 frag (v2f i) : SV_Target
+            float4 Frag(Varyings input) : SV_Target
             {
-                float4 col = tex2D(_MainTex, i.uv);
-                return col;
+                return _MainTex.SampleLevel(sampler_MainTex, input.uv, 0);
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }

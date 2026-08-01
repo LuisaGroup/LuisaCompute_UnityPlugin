@@ -31,10 +31,18 @@ public enum LCPixelStorage : uint
     FLOAT2,
     FLOAT4,
 
+    R10G10B10A2,
+    R11G11B10,
+
+    BC1,
+    BC2,
+    BC3,
     BC4,
     BC5,
     BC6,
     BC7,
+    BC7_SRGB,
+    BYTE4_SRGB,
     //TODO: ASTC
 };
 public enum DXGI_FORMAT : uint
@@ -178,7 +186,7 @@ public unsafe class SaberPlugin
     [DllImport("lc-unity3d.dll")]
     private static extern IntPtr LCPluginUnLoad();
     [DllImport("lc-unity3d.dll")]
-    private static extern int emplace_data(int event_id, void* ptr, int size);
+    private static extern IntPtr emplace_data(int event_id, void* ptr, int size);
     static bool isEnabled = false;
     public static void Enable(){
         if(isEnabled) return;
@@ -190,30 +198,19 @@ public unsafe class SaberPlugin
         isEnabled = false;
         LCPluginUnLoad();
     }
-    private static void IssuePluginEvent(RenderEvents eventId, void* data, int dataSize)
-    {
-        if(!isEnabled){
-            Debug.LogError("Plugin not started");
-            return;
-        }
-        int idx = emplace_data((int)eventId, data, dataSize);
-        GL.IssuePluginEvent(GetRenderEventFunc(), idx);
-    }
-    public static void IssuePluginEvent<T>(RenderEvents eventId, ref T t) where T : unmanaged
-    {
-        fixed (void* ptr = &t)
-        {
-            IssuePluginEvent(eventId, ptr, sizeof(T));
-        }
-    }
     private static void IssuePluginEvent(CommandBuffer cmdBuffer, RenderEvents eventId, void* data, int dataSize)
     {
         if(!isEnabled){
             Debug.LogError("Plugin not started");
             return;
         }
-        int idx = emplace_data((int)eventId, data, dataSize);
-        cmdBuffer.IssuePluginEvent(GetRenderEventFunc(), idx);
+        IntPtr eventData = emplace_data((int)eventId, data, dataSize);
+        if (eventData == IntPtr.Zero)
+        {
+            Debug.LogError("Failed to allocate plugin event data");
+            return;
+        }
+        cmdBuffer.IssuePluginEventAndData(GetRenderEventFunc(), (int)eventId, eventData);
     }
     public static void IssuePluginEvent<T>(CommandBuffer cmdBuffer, RenderEvents eventId, ref T t) where T : unmanaged
     {

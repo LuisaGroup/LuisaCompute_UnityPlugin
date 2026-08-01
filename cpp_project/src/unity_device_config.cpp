@@ -92,27 +92,17 @@ static luisa::unique_ptr<LCPlugin> plugin;
 LCPlugin *LCPlugin::instance() {
     return plugin.get();
 }
-size_t LCPlugin::emplace(int event_id, luisa::span<const std::byte> data) {
-    std::lock_guard lck{_event_mtx};
-    if (_events.size() <= event_id) {
-        _events.resize(event_id + 1);
-    }
-    auto &vec = _events[event_id].data;
-    vec.clear();
-    vec.push_back_uninitialized(data.size());
-    std::memcpy(vec.data(), data.data(), data.size());
-    return event_id;
-}
-auto LCPlugin::get(int id) -> Event & {
-    std::lock_guard lck{_event_mtx};
-    if (_events.size() > id) {
-        return _events[id];
-    } else {
-        return *reinterpret_cast<Event *>(0);
-    }
-}
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces *unity_interface) {
     _unity_graphics = unity_interface->Get<IUnityGraphicsD3D12v7>();
+    if (_unity_graphics) {
+        UnityD3D12PluginEventConfig event_config{};
+        event_config.graphicsQueueAccess = kUnityD3D12GraphicsQueueAccess_Allow;
+        event_config.flags = kUnityD3D12EventConfigFlag_FlushCommandBuffers |
+                             kUnityD3D12EventConfigFlag_SyncWorkerThreads |
+                             kUnityD3D12EventConfigFlag_ModifiesCommandBuffersState;
+        event_config.ensureActiveRenderTextureIsBound = false;
+        _unity_graphics->ConfigureEvent(0, &event_config);
+    }
 }
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 }
@@ -123,14 +113,20 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API LCPluginLoad() {
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API LCPluginUnLoad() {
     plugin = nullptr;
 }
-// Implement this function in other module.
-static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
-    plugin->on_render_event(eventID);
+static void UNITY_INTERFACE_API OnRenderEvent(int event_id, void *data) {
+    auto event = luisa::unique_ptr<LCPlugin::Event>{static_cast<LCPlugin::Event *>(data)};
+    if (plugin && event)
+        plugin->on_render_event(event_id, {event->data.data(), event->data.size()});
 }
-extern "C" UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc() {
+extern "C" UnityRenderingEventAndData UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc() {
     return OnRenderEvent;
 }
-extern "C" int UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API emplace_data(int event_id, void *ptr, int size) {
-    return plugin->emplace(event_id, luisa::span{reinterpret_cast<std::byte const *>(ptr), size_t(size)});
+extern "C" UNITY_INTERFACE_EXPORT void *UNITY_INTERFACE_API emplace_data(int event_id, void *ptr, int size) {
+    if (!plugin || ptr == nullptr || size <= 0)
+        return nullptr;
+    auto event = luisa::make_unique<LCPlugin::Event>();
+    event->data.push_back_uninitialized(static_cast<size_t>(size));
+    std::memcpy(event->data.data(), ptr, static_cast<size_t>(size));
+    return event.release();
 }
 #endif

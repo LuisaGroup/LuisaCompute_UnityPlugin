@@ -5,6 +5,7 @@
 #include <luisa/core/logging.h>
 #include <luisa/runtime/raster/depth_buffer.h>
 #include <luisa/dsl/sugar.h>
+#include <algorithm>
 #include "tiny_obj_loader.h"
 #include "cornell_box.h"
 using namespace luisa::compute;
@@ -15,6 +16,21 @@ struct NativeTextureDesc {
     DXGI_FORMAT custom_format;
     bool allowUav;
 };
+
+[[nodiscard]] static luisa::optional<PixelStorage> pixel_storage_from_dxgi_format(DXGI_FORMAT format) noexcept {
+    switch (format) {
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+        case DXGI_FORMAT_R8G8B8A8_UNORM: return PixelStorage::BYTE4;
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+        case DXGI_FORMAT_R16G16B16A16_FLOAT: return PixelStorage::HALF4;
+        case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+        case DXGI_FORMAT_R32G32B32A32_FLOAT: return PixelStorage::FLOAT4;
+        case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+        case DXGI_FORMAT_R10G10B10A2_UNORM: return PixelStorage::R10G10B10A2;
+        case DXGI_FORMAT_R11G11B10_FLOAT: return PixelStorage::R11G11B10;
+        default: return luisa::nullopt;
+    }
+}
 
 struct Onb {
     float3 tangent;
@@ -167,7 +183,7 @@ void PathTracingComponent ::init(Device &device, Stream &stream) {
         Bool hitted;
         $for (depth, 10u) {
             // trace
-            Var<TriangleHit> hit = accel->trace_closest(ray);
+            Var<TriangleHit> hit = accel->intersect(ray, {});
             $if (hit->miss()) { $break; };
             $if (depth == 0) {
                 proj = make_float4(uv * 2.f - 1.f, proj_depth, 1.f);
@@ -209,7 +225,7 @@ void PathTracingComponent ::init(Device &device, Stream &stream) {
             Float d_light = distance(pp, pp_light);
             Float3 wi_light = normalize(pp_light - pp);
             Var<Ray> shadow_ray = make_ray(offset_ray_origin(pp, n), wi_light, 0.f, d_light);
-            Bool occluded = accel->trace_any(shadow_ray);
+            Bool occluded = accel->intersect_any(shadow_ray, {});
             Float cos_wi_light = dot(wi_light, n);
             Float cos_light = -dot(light_normal, wi_light);
             Float3 albedo = materials.read(hit.inst);
@@ -252,50 +268,72 @@ void PathTracingComponent ::init(Device &device, Stream &stream) {
     init_sampler_shader = device.compile(make_sampler_kernel);
 }
 void PathTracingComponent::execute(Device &device, ImageView<float> tex, ImageView<float> depth_tex, CommandList &cmdlist, CreateRTData const &data) {
-    if (seed_image && (any(seed_image.size() != tex.size()))) {
-        cmdlist.add_callback([seed_image = std::move(seed_image)]() {});
+    auto iter = std::find_if(camera_states.begin(), camera_states.end(), [&](auto const &state) noexcept {
+        return state.camera_id == data.cameraId;
+    });
+    if (iter == camera_states.end()) {
+        auto &new_state = camera_states.emplace_back();
+        new_state.camera_id = data.cameraId;
+        iter = camera_states.end() - 1;
     }
-    if (!seed_image) {
-        seed_image = device.create_image<uint>(PixelStorage::INT1, tex.size());
-        cmdlist << init_sampler_shader(seed_image).dispatch(tex.size());
+    auto &state = *iter;
+
+    if (state.seed_image && (any(state.seed_image.size() != tex.size()))) {
+        cmdlist.add_callback([image = std::move(state.seed_image)]() {});
     }
-    if (color_image && (any(color_image.size() != tex.size()))) {
-        cmdlist.add_callback([color_image = std::move(color_image)]() {});
+    if (!state.seed_image) {
+        state.seed_image = device.create_image<uint>(PixelStorage::INT1, tex.size());
+        cmdlist << init_sampler_shader(state.seed_image).dispatch(tex.size());
     }
-    frame++;
-    if (!color_image) {
-        color_image = device.create_image<float>(PixelStorage::FLOAT4, tex.size());
-        frame = 0;
+    if (state.color_image && (any(state.color_image.size() != tex.size()))) {
+        cmdlist.add_callback([image = std::move(state.color_image)]() {});
     }
-    if (data.resetFrame) {
-        frame = 0;
+    state.frame++;
+    if (!state.color_image) {
+        state.color_image = device.create_image<float>(PixelStorage::FLOAT4, tex.size());
+        state.frame = 0u;
+    }
+    if (data.resetFrame != 0u) {
+        state.frame = 0u;
     }
     Arg arg{
         .cam_pos = make_float3(data.camera_pos[0], data.camera_pos[1], data.camera_pos[2]),
-        .frame = frame};
+        .frame = state.frame};
     std::memcpy(&arg.invvp, &data.invvp, sizeof(float4x4));
-    cmdlist << shader(seed_image, color_image, tex, depth_tex, arg).dispatch(tex.size());
+    cmdlist << shader(state.seed_image, state.color_image, tex, depth_tex, arg).dispatch(tex.size());
 }
 
-void LCPlugin::on_render_event(int index) {
-    auto &event = get(index);
-    if (&event == nullptr) {
+void LCPlugin::on_render_event(int event_id, span<const std::byte> event_data) {
+    if (event_id != 0 || event_data.size() != sizeof(CreateRTData)) {
         return;
     }
 
     auto native_ext = _lc_device.extension<NativeResourceExt>();
-    auto data_ptr = reinterpret_cast<CreateRTData const *>(event.data.data());
+    auto data_ptr = reinterpret_cast<CreateRTData const *>(event_data.data());
     auto tex_desc = data_ptr->ptr->GetDesc();
+    auto storage = pixel_storage_from_dxgi_format(tex_desc.Format);
+    if (!storage) {
+        LUISA_WARNING_WITH_LOCATION(
+            "Unsupported Unity render target DXGI format {}. Skipping native rendering.",
+            static_cast<uint>(tex_desc.Format));
+        return;
+    }
+    if (*storage != data_ptr->storage) {
+        LUISA_WARNING_WITH_LOCATION(
+            "Unity render target storage mismatch (C#: {}, D3D12: {}). Using the D3D12 resource format.",
+            static_cast<uint>(data_ptr->storage), static_cast<uint>(*storage));
+    }
     NativeTextureDesc native_tex_desc{
         .initState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         .custom_format = DXGI_FORMAT_UNKNOWN,
         .allowUav = true};
     _unity_config->regist_resource(data_ptr->ptr, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    auto tex = native_ext->create_native_image<float>(data_ptr->ptr, tex_desc.Width, tex_desc.Height, data_ptr->storage, 1, &native_tex_desc);
+    auto tex = native_ext->create_native_image<float>(data_ptr->ptr, tex_desc.Width, tex_desc.Height, *storage, 1, &native_tex_desc);
     D3D12_RESOURCE_STATES depth_state = D3D12_RESOURCE_STATE_DEPTH_READ;
     auto depth_tex = native_ext->create_native_depth_buffer(data_ptr->depthPtr, DepthFormat::D32S8A24, tex_desc.Width, tex_desc.Height, &depth_state);
     CommandList cmdlist;
     pt_component.execute(_lc_device, tex.view(), depth_tex.to_img(), cmdlist, *data_ptr);
     cmdlist.add_callback([tex = std::move(tex), depth_tex = std::move(depth_tex)]() {});
-    _lc_stream << cmdlist.commit();
+    _lc_stream << cmdlist.commit()
+               << synchronize();
 }
